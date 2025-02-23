@@ -1,0 +1,57 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ "AddGithubAction", "staging", "main" ]
+  pull_request:
+    branches: [ "AddGithubAction", "staging", "main" ]
+
+jobs:
+  test:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        php: [8.1, 8.2]
+        node: [16, 18]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php }}
+        extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, json, libxml
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node }}
+
+    - name: Cache Composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: vendor
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: Cache NPM dependencies
+      uses: actions/cache@v3
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: ${{ runner.os }}-npm-
+
+    - name: Setup Application
+      run: |
+        cp .env.example .env
+        composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+        php artisan key:generate
+        chmod -R 777 storage bootstrap/cache
+        touch database/database.sqlite
+        php artisan migrate
+        npm install
+        npm run build
+
+    - name: Execute Tests
+      run: vendor/bin/phpunit
